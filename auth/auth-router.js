@@ -1,10 +1,9 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
-const bcryptjs = require('bcryptjs');
+const bcrypt = require('bcryptjs');
 const secrets = require('../config/secrets.js');
 
 const Users = require('../users/users-model.js');
-const { isValid } = require('../users/users-service.js');
 
 
 function generateToken(user) {
@@ -13,53 +12,54 @@ function generateToken(user) {
     username: user.username,
   };
     const options = {
-      expiresIn: '2H'
+      expiresIn: '2h' 
     };
-
-    return jwt.sign(payload, secrets.jwtSecret, options)
+  const token = jwt.sign(payload, secrets.jwtSecret, options);
+  return token;
 }
 
 router.post('/register', (req, res) => {
-  const credentials = req.body;
-
-  if (isValid(credentials)) {
-    const rounds = process.env.BCRYPT_ROUNDS || 7;
-    const hash = bcryptjs.hashSync(credentials.password, rounds);
-    credentials.password = hash;
-
-    Users.add(credentials)
-    .then(user => {
-      const token = genToken(saved);
-      res.status(201).json({ data: user, token });
-    })
-    .catch(err => {
-      res.status(500).json({ message: err.message });
-    });
+  // implement registration
+  const user = req.body;
+  if (typeof user.username === 'undefined' || typeof user.password === 'undefined') {
+    res.status(401).json({ error: 'missing username or password field' });
   } else {
-    res.status(400).json({ message: 'Please provide alphanumeric username and password.' });
+    const hash = bcrypt.hashSync(user.password, 10);
+    user.password = hash;
+
+    Users.add(user)
+      .then((saved) => {
+        const token = genToken(saved);
+        res.status(201).json({ created_user: saved, token });
+      })
+      .catch((err) => res.status(500).json({
+        error: 'error while registering user',
+        message: err.message,
+      }));
   }
 });
 
 router.post('/login', (req, res) => {
+  // implement login
   const { username, password } = req.body;
-
-  if (isValid(req.body)) {
-    Users.findBy({ username: username })
-      .then(([user]) => {
-        if (user && bcryptjs.compareSync(password, user.password)) {
+  if (typeof username === 'undefined' || typeof password === 'undefined') {
+    res.status(401).json({ error: 'missing username or password field' });
+  } else {
+    Users.findBy({ username })
+      .first()
+      .then((user) => {
+        if (user && bcrypt.compareSync(password, user.password)) {
           const token = generateToken(user);
-          res.status(200).json({ message: 'Welcome to our API.', token});
+          res.status(200).json({ username: user.username, token });
         } else {
-          res.status(401).json({ message: 'Invalid credentials.' });
+          res.status(401).json({ message: 'You shall not pass!' });
         }
       })
-      .catch(err => {
-        res.status(500).json({ message: error.message });
-      });
-    } else {
-      res.status(400).json({ message: 'Please provide alphanumerical username and password.' });
-    }
+      .catch((err) => res.status(500).json({
+        error: 'error while logging into database',
+        message: err.message,
+      }));
+  }
 });
-
 
 module.exports = router;
